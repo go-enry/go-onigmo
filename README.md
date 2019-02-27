@@ -1,4 +1,5 @@
 ## go-oniguruma
+<a href="https://travis-ci.org/src-d/go-oniguruma"><img alt="Build Status" src="https://travis-ci.org/src-d/go-oniguruma.svg?branch=master" /></a>
 
 This repository is a fork of [moovweb/rubex](https://github.com/moovweb/rubex/tree/go1) - a simple regular expression library (based on [oniguruma](https://github.com/kkos/oniguruma)) that supports Ruby's regex syntax.
 
