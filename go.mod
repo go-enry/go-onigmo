@@ -1,1 +1,3 @@
-module github.com/src-d/go-oniguruma
+module github.com/go-enry/go-oniguruma
+
+go 1.14
