@@ -529,7 +529,7 @@ type FindTest struct {
 }
 
 func (t FindTest) String() string {
-	return fmt.Sprintf("pat: %#q text: %#q", t.pat, t.text)
+	return fmt.Sprintf("pattern: %#q text: %#q", t.pat, t.text)
 }
 
 var findTests = []FindTest{
