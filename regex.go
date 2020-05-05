@@ -216,10 +216,6 @@ func getCapture(b []byte, beg int, end int) []byte {
 
 func (re *Regexp) match(b []byte, n int, offset int) bool {
 	if n == 0 {
-		return true
-	}
-
-	if n == 0 {
 		b = []byte{0}
 	}
 
