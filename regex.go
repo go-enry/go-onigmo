@@ -38,23 +38,10 @@ type Regexp struct {
 
 	numCaptures    int32
 	namedGroupInfo NamedGroupInfo
-	mutex          *sync.Mutex
 }
 
 // NewRegexp creates and initializes a new Regexp with the given pattern and option.
 func NewRegexp(pattern string, option int) (*Regexp, error) {
-	re, err := initRegexp(&Regexp{pattern: pattern, encoding: C.ONIG_ENCODING_UTF8}, option)
-	if err != nil {
-		return nil, err
-	}
-
-	re.mutex = new(sync.Mutex)
-	return re, nil
-}
-
-// NewRegexpNonThreadsafe creates and initializes a new Regexp with the given
-// pattern and option. The resulting regexp is not thread-safe.
-func NewRegexpNonThreadsafe(pattern string, option int) (*Regexp, error) {
 	return initRegexp(&Regexp{pattern: pattern, encoding: C.ONIG_ENCODING_UTF8}, option)
 }
 
@@ -119,22 +106,7 @@ func MustCompileASCII(str string) *Regexp {
 	return regexp
 }
 
-func (re *Regexp) lock() {
-	if re.mutex != nil {
-		re.mutex.Lock()
-	}
-}
-
-func (re *Regexp) unlock() {
-	if re.mutex != nil {
-		re.mutex.Unlock()
-	}
-}
-
 func (re *Regexp) Free() {
-	re.lock()
-	defer re.unlock()
-
 	mutex.Lock()
 	if re.regex != nil {
 		C.onig_free(re.regex)
@@ -194,9 +166,6 @@ func (re *Regexp) getNamedGroupInfo() NamedGroupInfo {
 }
 
 func (re *Regexp) find(b []byte, n int, offset int) []int {
-	re.lock()
-	defer re.unlock()
-
 	match := make([]int, re.numCaptures*2)
 
 	if n == 0 {
@@ -504,9 +473,6 @@ func (re *Regexp) MatchString(s string) bool {
 }
 
 func (re *Regexp) NumSubexp() int {
-	re.lock()
-	defer re.unlock()
-
 	return (int)(C.onig_number_of_captures(re.regex))
 }
 
@@ -614,9 +580,6 @@ func (re *Regexp) ReplaceAllStringFunc(src string, repl func(string) string) str
 }
 
 func (re *Regexp) String() string {
-	re.lock()
-	defer re.unlock()
-
 	return re.pattern
 }
 
