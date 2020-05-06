@@ -660,44 +660,15 @@ func (re *Regexp) String() string {
 	return re.pattern
 }
 
-func growBuffer(b []byte, offset int, n int) []byte {
-	if offset+n > cap(b) {
-		buf := make([]byte, 2*cap(b)+n)
-		copy(buf, b[:offset])
-		return buf
-	}
-
-	return b
-}
-
-func fromReader(r io.RuneReader) []byte {
-	b := make([]byte, numReadBufferStartSize)
-
-	var offset int
-	for {
-		rune, runeWidth, err := r.ReadRune()
-		if err != nil {
-			break
-		}
-
-		b = growBuffer(b, offset, runeWidth)
-		writeWidth := utf8.EncodeRune(b[offset:], rune)
-		if runeWidth != writeWidth {
-			panic("reading rune width not equal to the written rune width")
-		}
-
-		offset += writeWidth
-	}
-
-	return b[:offset]
-}
-
 // FindReaderIndex returns a two-element slice of integers defining the location
 // of the leftmost match of the regular expression in text read from the
 // RuneReader. The match text was found in the input stream at byte offset
 // loc[0] through loc[1]-1. A return value of nil indicates no match.
+//
+// In contrast with the standard library implementation, the reader it's fully
+// loaded in memory.
 func (re *Regexp) FindReaderIndex(r io.RuneReader) []int {
-	b := fromReader(r)
+	b, _ := readAll(r)
 	return re.FindIndex(b)
 }
 
@@ -706,16 +677,42 @@ func (re *Regexp) FindReaderIndex(r io.RuneReader) []int {
 // and the matches, if any, of its subexpressions, as defined by the 'Submatch'
 // and 'Index' descriptions in the package comment. A return value of nil
 // indicates no match.
+//
+// In contract with the standard library implementation, the reader it's fully
+// loaded in memory.
 func (re *Regexp) FindReaderSubmatchIndex(r io.RuneReader) []int {
-	b := fromReader(r)
+	b, _ := readAll(r)
 	return re.FindSubmatchIndex(b)
 }
 
 // MatchReader reports whether the text returned by the RuneReader contains any
 // match of the regular expression re.
+//
+// In contrast with the standard library implementation, the reader it's fully
+// loaded in memory.
 func (re *Regexp) MatchReader(r io.RuneReader) bool {
-	b := fromReader(r)
+	b, _ := readAll(r)
 	return re.Match(b)
+}
+
+func readAll(r io.RuneReader) ([]byte, error) {
+	var buf bytes.Buffer
+	for {
+		rune, _, err := r.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			return nil, err
+		}
+
+		if _, err := buf.WriteRune(rune); err != nil {
+			return nil, err
+		}
+	}
+
+	return buf.Bytes(), nil
 }
 
 // LiteralPrefix returns a literal string that must begin any match of the
