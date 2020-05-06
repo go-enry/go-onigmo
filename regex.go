@@ -31,7 +31,6 @@ type NamedGroupInfo map[string]int
 type Regexp struct {
 	pattern   string
 	regex     C.OnigRegex
-	region    *C.OnigRegion
 	encoding  C.OnigEncoding
 	errorInfo *C.OnigErrorInfo
 	errorBuf  *C.char
@@ -57,7 +56,7 @@ func initRegexp(re *Regexp, option int) (*Regexp, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	errorCode := C.NewOnigRegex(patternCharPtr, C.int(len(re.pattern)), C.int(option), &re.regex, &re.region, &re.encoding, &re.errorInfo, &re.errorBuf)
+	errorCode := C.NewOnigRegex(patternCharPtr, C.int(len(re.pattern)), C.int(option), &re.regex, &re.encoding, &re.errorInfo, &re.errorBuf)
 	if errorCode != C.ONIG_NORMAL {
 		return re, errors.New(C.GoString(re.errorBuf))
 	}
@@ -111,10 +110,6 @@ func (re *Regexp) Free() {
 	if re.regex != nil {
 		C.onig_free(re.regex)
 		re.regex = nil
-	}
-	if re.region != nil {
-		C.onig_region_free(re.region, 1)
-		re.region = nil
 	}
 	mutex.Unlock()
 	if re.errorInfo != nil {
@@ -184,7 +179,7 @@ func (re *Regexp) find(b []byte, n int, offset int) []int {
 
 	pos := int(C.SearchOnigRegex(
 		bytesPtr, C.int(n), C.int(offset), C.int(ONIG_OPTION_DEFAULT),
-		re.regex, re.region, re.errorInfo, (*C.char)(nil), (*C.int)(capturesPtr), (*C.int)(numCapturesPtr),
+		re.regex, re.errorInfo, (*C.char)(nil), (*C.int)(capturesPtr), (*C.int)(numCapturesPtr),
 	))
 
 	if pos < 0 {
@@ -222,7 +217,7 @@ func (re *Regexp) match(b []byte, n int, offset int) bool {
 	bytesPtr := unsafe.Pointer(&b[0])
 	pos := int(C.SearchOnigRegex(
 		bytesPtr, C.int(n), C.int(offset), C.int(ONIG_OPTION_DEFAULT),
-		re.regex, re.region, re.errorInfo, nil, nil, nil,
+		re.regex, re.errorInfo, nil, nil, nil,
 	))
 
 	return pos >= 0
