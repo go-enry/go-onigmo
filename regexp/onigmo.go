@@ -9,7 +9,7 @@ import (
 type Regexp = *onigmo.Regexp
 
 func MustCompile(str string) Regexp {
-	return onigmo.MustCompileASCII(str)
+	return onigmo.MustCompile(str)
 }
 
 func Compile(str string) (Regexp, error) {

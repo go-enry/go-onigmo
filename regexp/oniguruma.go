@@ -9,7 +9,7 @@ import (
 type Regexp = *rubex.Regexp
 
 func MustCompile(str string) Regexp {
-	return rubex.MustCompileASCII(str)
+	return rubex.MustCompile(str)
 }
 
 func Compile(str string) (Regexp, error) {
