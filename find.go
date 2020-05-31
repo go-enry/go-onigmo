@@ -1,6 +1,8 @@
 package rubex
 
-import "io"
+import (
+	"io"
+)
 
 // FindIndex returns a two-element slice of integers defining the location of
 // the leftmost match in b of the regular expression. The match itself is at
@@ -50,60 +52,73 @@ func (re *Regexp) FindStringIndex(s string) []int {
 // successive matches of the expression, as defined by the 'All' description in
 // the package comment. A return value of nil indicates no match.
 func (re *Regexp) FindAllIndex(b []byte, n int) [][]int {
-	matches := re.findAll(b, n)
-	if len(matches) == 0 {
-		return nil
+	if n < 0 {
+		n = len(b) + 1
 	}
-
-	return matches
+	var result [][]int
+	re.allMatches(b, n, func(match []int) {
+		if result == nil {
+			result = make([][]int, 0, startSize)
+		}
+		result = append(result, match[0:2])
+	})
+	return result
 }
+
+const startSize = 10 // The size at which to start a slice in the 'All' routines.
 
 // FindAll is the 'All' version of Find; it returns a slice of all successive
 // matches of the expression, as defined by the 'All' description in the package
 // comment. A return value of nil indicates no match.
 func (re *Regexp) FindAll(b []byte, n int) [][]byte {
-	matches := re.FindAllIndex(b, n)
-	if matches == nil {
-		return nil
+	if n < 0 {
+		n = len(b) + 1
 	}
-
-	matchBytes := make([][]byte, 0, len(matches))
-	for _, match := range matches {
-		matchBytes = append(matchBytes, getCapture(b, match[0], match[1]))
-	}
-
-	return matchBytes
+	var result [][]byte
+	re.allMatches(b, n, func(match []int) {
+		if result == nil {
+			result = make([][]byte, 0, startSize)
+		}
+		result = append(result, b[match[0]:match[1]:match[1]])
+	})
+	return result
 }
 
 // FindAllString is the 'All' version of FindString; it returns a slice of all
 // successive matches of the expression, as defined by the 'All' description in
 // the package comment. A return value of nil indicates no match.
 func (re *Regexp) FindAllString(s string, n int) []string {
+	if n < 0 {
+		n = len(s) + 1
+	}
+	var result []string
+
 	b := []byte(s)
-	matches := re.FindAllIndex(b, n)
-	if matches == nil {
-		return nil
-	}
-
-	matchStrings := make([]string, 0, len(matches))
-	for _, match := range matches {
-		m := getCapture(b, match[0], match[1])
-		if m == nil {
-			matchStrings = append(matchStrings, "")
-		} else {
-			matchStrings = append(matchStrings, string(m))
+	re.allMatches(b, n, func(match []int) {
+		if result == nil {
+			result = make([]string, 0, startSize)
 		}
-	}
-
-	return matchStrings
-
+		f := string(b[match[0]:match[1]])
+		result = append(result, f)
+	})
+	return result
 }
 
 // FindAllStringIndex is the 'All' version of FindStringIndex; it returns a
 // slice of all successive matches of the expression, as defined by the 'All'
 // description in the package comment. A return value of nil indicates no match.
 func (re *Regexp) FindAllStringIndex(s string, n int) [][]int {
-	return re.FindAllIndex([]byte(s), n)
+	if n < 0 {
+		n = len(s) + 1
+	}
+	var result [][]int
+	re.allMatches([]byte(s), n, func(match []int) {
+		if result == nil {
+			result = make([][]int, 0, startSize)
+		}
+		result = append(result, match[0:2])
+	})
+	return result
 }
 
 // FindSubmatchIndex returns a slice holding the index pairs identifying the
@@ -183,65 +198,63 @@ func (re *Regexp) FindStringSubmatchIndex(s string) []int {
 // slice of all successive matches of the expression, as defined by the 'All'
 // description in the package comment. A return value of nil indicates no match.
 func (re *Regexp) FindAllSubmatchIndex(b []byte, n int) [][]int {
-	matches := re.findAll(b, n)
-	if len(matches) == 0 {
-		return nil
+	if n < 0 {
+		n = len(b) + 1
 	}
-
-	return matches
+	var result [][]int
+	re.allMatches(b, n, func(match []int) {
+		if result == nil {
+			result = make([][]int, 0, startSize)
+		}
+		result = append(result, match)
+	})
+	return result
 }
 
 // FindAllSubmatch is the 'All' version of FindSubmatch; it returns a slice of
 // all successive matches of the expression, as defined by the 'All' description
 // in the package comment. A return value of nil indicates no match.
 func (re *Regexp) FindAllSubmatch(b []byte, n int) [][][]byte {
-	matches := re.findAll(b, n)
-	if len(matches) == 0 {
-		return nil
+	if n < 0 {
+		n = len(b) + 1
 	}
-
-	allCapturedBytes := make([][][]byte, 0, len(matches))
-	for _, match := range matches {
-		length := len(match) / 2
-		capturedBytes := make([][]byte, 0, length)
-		for i := 0; i < length; i++ {
-			capturedBytes = append(capturedBytes, getCapture(b, match[2*i], match[2*i+1]))
+	var result [][][]byte
+	re.allMatches(b, n, func(match []int) {
+		if result == nil {
+			result = make([][][]byte, 0, startSize)
 		}
-
-		allCapturedBytes = append(allCapturedBytes, capturedBytes)
-	}
-
-	return allCapturedBytes
+		slice := make([][]byte, len(match)/2)
+		for j := range slice {
+			if match[2*j] >= 0 {
+				slice[j] = b[match[2*j]:match[2*j+1]:match[2*j+1]]
+			}
+		}
+		result = append(result, slice)
+	})
+	return result
 }
 
 // FindAllStringSubmatch is the 'All' version of FindStringSubmatch; it returns
 // a slice of all successive matches of the expression, as defined by the 'All'
 // description in the package comment. A return value of nil indicates no match.
 func (re *Regexp) FindAllStringSubmatch(s string, n int) [][]string {
-	b := []byte(s)
-
-	matches := re.findAll(b, n)
-	if len(matches) == 0 {
-		return nil
+	if n < 0 {
+		n = len(s) + 1
 	}
-
-	allCapturedStrings := make([][]string, 0, len(matches))
-	for _, match := range matches {
-		length := len(match) / 2
-		capturedStrings := make([]string, 0, length)
-		for i := 0; i < length; i++ {
-			cap := getCapture(b, match[2*i], match[2*i+1])
-			if cap == nil {
-				capturedStrings = append(capturedStrings, "")
-			} else {
-				capturedStrings = append(capturedStrings, string(cap))
+	var result [][]string
+	re.allMatches([]byte(s), n, func(match []int) {
+		if result == nil {
+			result = make([][]string, 0, startSize)
+		}
+		slice := make([]string, len(match)/2)
+		for j := range slice {
+			if match[2*j] >= 0 {
+				slice[j] = s[match[2*j]:match[2*j+1]]
 			}
 		}
-
-		allCapturedStrings = append(allCapturedStrings, capturedStrings)
-	}
-
-	return allCapturedStrings
+		result = append(result, slice)
+	})
+	return result
 }
 
 // FindAllStringSubmatchIndex is the 'All' version of FindStringSubmatchIndex;
@@ -249,7 +262,17 @@ func (re *Regexp) FindAllStringSubmatch(s string, n int) [][]string {
 // by the 'All' description in the package comment. A return value of nil
 // indicates no match.
 func (re *Regexp) FindAllStringSubmatchIndex(s string, n int) [][]int {
-	return re.FindAllSubmatchIndex([]byte(s), n)
+	if n < 0 {
+		n = len(s) + 1
+	}
+	var result [][]int
+	re.allMatches([]byte(s), n, func(match []int) {
+		if result == nil {
+			result = make([][]int, 0, startSize)
+		}
+		result = append(result, match)
+	})
+	return result
 }
 
 // FindReaderIndex returns a two-element slice of integers defining the location

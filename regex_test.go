@@ -38,14 +38,14 @@ type stringError struct {
 }
 
 var badRe = []stringError{
-	{`*`, "missing argument to repetition operator: `*`"},
-	{`+`, "missing argument to repetition operator: `+`"},
-	{`?`, "missing argument to repetition operator: `?`"},
-	{`(abc`, "missing closing ): `(abc`"},
-	{`abc)`, "unexpected ): `abc)`"},
-	{`x[a-z`, "missing closing ]: `[a-z`"},
-	{`[z-a]`, "invalid character class range: `z-a`"},
-	{`abc\`, "trailing backslash at end of expression"},
+	{`*`, "target of repeat operator is not specified"},
+	{`+`, "target of repeat operator is not specified"},
+	{`?`, "target of repeat operator is not specified"},
+	{`(abc`, "end pattern with unmatched parenthesis"},
+	{`abc)`, "unmatched close parenthesis"},
+	{`x[a-z`, "premature end of char-class"},
+	{`[z-a]`, "empty range in char class"},
+	{`abc\`, "end pattern at escape"},
 	{`a**`, "invalid nested repetition operator: `**`"},
 	{`a*+`, "invalid nested repetition operator: `*+`"},
 	{`\x`, "invalid escape sequence: `\\x`"},

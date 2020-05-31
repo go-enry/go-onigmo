@@ -9,11 +9,10 @@ package rubex
 import "C"
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"runtime"
-	"strconv"
+	"strings"
 	"sync"
 	"unicode/utf8"
 	"unsafe"
@@ -23,8 +22,6 @@ const numMatchStartSize = 4
 const numReadBufferStartSize = 256
 
 var mutex sync.Mutex
-
-type NamedGroupInfo map[string]int
 
 var _ compliance = &Regexp{}
 
@@ -39,8 +36,8 @@ type Regexp struct {
 	errorInfo *C.OnigErrorInfo
 	errorBuf  *C.char
 
-	numCaptures       int32
-	namedGroupInfo    NamedGroupInfo
+	numSubexp         int
+	subexpNames       []string
 	hasMetacharacters bool
 }
 
@@ -62,10 +59,10 @@ func newRegExp(pattern string, encoding C.OnigEncoding, options int) (*Regexp, e
 	}
 
 	runtime.SetFinalizer(re, (*Regexp).Free)
-	return re, initRegexp(re)
+	return re, re.initRegexp()
 }
 
-func initRegexp(re *Regexp) error {
+func (re *Regexp) initRegexp() error {
 	patternCharPtr := C.CString(re.pattern)
 	defer C.free(unsafe.Pointer(patternCharPtr))
 
@@ -77,9 +74,34 @@ func initRegexp(re *Regexp) error {
 		return errors.New(C.GoString(re.errorBuf))
 	}
 
-	re.numCaptures = int32(C.onig_number_of_captures(re.regex)) + 1
-	re.namedGroupInfo = re.getNamedGroupInfo()
+	re.numSubexp = int(C.onig_number_of_captures(re.regex))
 	re.hasMetacharacters = QuoteMeta(re.pattern) != re.pattern
+
+	return re.loadSubexpNames()
+}
+
+func (re *Regexp) loadSubexpNames() error {
+	count := int(C.onig_number_of_names(re.regex))
+	if count == 0 {
+		return nil
+	}
+
+	bufferSize := len(re.pattern) * 2
+	nameBuffer := make([]byte, bufferSize)
+	bufferPtr := unsafe.Pointer(&nameBuffer[0])
+
+	length := int(C.GetCaptureNames(re.regex, bufferPtr, (C.int)(bufferSize), nil))
+	if length == 0 {
+		return fmt.Errorf("could not get the capture group names")
+	}
+
+	re.subexpNames = strings.Split(string(nameBuffer[:length]), ";")
+	if len(re.subexpNames) != count {
+		return fmt.Errorf(
+			"unexpected number of capture group names, got %d, expected %d,",
+			len(re.subexpNames), count,
+		)
+	}
 
 	return nil
 }
@@ -142,46 +164,12 @@ func (re *Regexp) Free() {
 	}
 }
 
-func (re *Regexp) getNamedGroupInfo() NamedGroupInfo {
-	numNamedGroups := int(C.onig_number_of_names(re.regex))
-	// when any named capture exists, there is no numbered capture even if
-	// there are unnamed captures.
-	if numNamedGroups == 0 {
-		return nil
-	}
-
-	namedGroupInfo := make(map[string]int)
-
-	//try to get the names
-	bufferSize := len(re.pattern) * 2
-	nameBuffer := make([]byte, bufferSize)
-	groupNumbers := make([]int32, numNamedGroups)
-	bufferPtr := unsafe.Pointer(&nameBuffer[0])
-	numbersPtr := unsafe.Pointer(&groupNumbers[0])
-
-	length := int(C.GetCaptureNames(re.regex, bufferPtr, (C.int)(bufferSize), (*C.int)(numbersPtr)))
-	if length == 0 {
-		panic(fmt.Errorf("could not get the capture group names from %q", re.String()))
-	}
-
-	namesAsBytes := bytes.Split(nameBuffer[:length], ([]byte)(";"))
-	if len(namesAsBytes) != numNamedGroups {
-		panic(fmt.Errorf(
-			"the number of named groups (%d) does not match the number names found (%d)",
-			numNamedGroups, len(namesAsBytes),
-		))
-	}
-
-	for i, nameAsBytes := range namesAsBytes {
-		name := string(nameAsBytes)
-		namedGroupInfo[name] = int(groupNumbers[i])
-	}
-
-	return namedGroupInfo
-}
-
 func (re *Regexp) find(b []byte, n int, offset int) []int {
-	match := make([]int, re.numCaptures*2)
+	if len(re.pattern) == 0 && len(b) == 0 {
+		return make([]int, (re.numSubexp+1)*2)
+	}
+
+	match := make([]int, (re.numSubexp+1)*2)
 
 	if n == 0 {
 		b = []byte{0}
@@ -191,7 +179,7 @@ func (re *Regexp) find(b []byte, n int, offset int) []int {
 
 	// captures contains two pairs of ints, start and end, so we need list
 	// twice the size of the capture groups.
-	captures := make([]C.int, re.numCaptures*2)
+	captures := make([]C.int, (re.numSubexp+1)*2)
 	capturesPtr := unsafe.Pointer(&captures[0])
 
 	var numCaptures int32
@@ -208,10 +196,6 @@ func (re *Regexp) find(b []byte, n int, offset int) []int {
 
 	if numCaptures <= 0 {
 		panic("cannot have 0 captures when processing a match")
-	}
-
-	if re.numCaptures != numCaptures {
-		panic(fmt.Errorf("expected %d captures but got %d", re.numCaptures, numCaptures))
 	}
 
 	for i := range captures {
@@ -281,90 +265,16 @@ func (re *Regexp) findAll(b []byte, n int) [][]int {
 
 // NumSubexp returns the number of parenthesized subexpressions in this Regexp.
 func (re *Regexp) NumSubexp() int {
-	return (int)(C.onig_number_of_captures(re.regex))
+	return int(re.numSubexp)
 }
 
-func fillCapturedValues(repl []byte, _ []byte, capturedBytes map[string][]byte) []byte {
-	replLen := len(repl)
-	newRepl := make([]byte, 0, replLen*3)
-	groupName := make([]byte, 0, replLen)
-
-	var inGroupNameMode, inEscapeMode bool
-	for index := 0; index < replLen; index++ {
-		ch := repl[index]
-		if inGroupNameMode && ch == byte('<') {
-		} else if inGroupNameMode && ch == byte('>') {
-			inGroupNameMode = false
-			capBytes := capturedBytes[string(groupName)]
-			newRepl = append(newRepl, capBytes...)
-			groupName = groupName[:0] //reset the name
-		} else if inGroupNameMode {
-			groupName = append(groupName, ch)
-		} else if inEscapeMode && ch <= byte('9') && byte('1') <= ch {
-			capNumStr := string(ch)
-			capBytes := capturedBytes[capNumStr]
-			newRepl = append(newRepl, capBytes...)
-		} else if inEscapeMode && ch == byte('k') && (index+1) < replLen && repl[index+1] == byte('<') {
-			inGroupNameMode = true
-			inEscapeMode = false
-			index++ //bypass the next char '<'
-		} else if inEscapeMode {
-			newRepl = append(newRepl, '\\')
-			newRepl = append(newRepl, ch)
-		} else if ch != '\\' {
-			newRepl = append(newRepl, ch)
-		}
-		if ch == byte('\\') || inEscapeMode {
-			inEscapeMode = !inEscapeMode
-		}
-	}
-
-	return newRepl
-}
-
-func (re *Regexp) replaceAll(src, repl []byte, replFunc func([]byte, []byte, map[string][]byte) []byte) []byte {
-	srcLen := len(src)
-	matches := re.findAll(src, srcLen)
-	if len(matches) == 0 {
-		return src
-	}
-
-	dest := make([]byte, 0, srcLen)
-	for i, match := range matches {
-		length := len(match) / 2
-		capturedBytes := make(map[string][]byte)
-
-		if re.namedGroupInfo == nil {
-			for j := 0; j < length; j++ {
-				capturedBytes[strconv.Itoa(j)] = getCapture(src, match[2*j], match[2*j+1])
-			}
-		} else {
-			for name, j := range re.namedGroupInfo {
-				capturedBytes[name] = getCapture(src, match[2*j], match[2*j+1])
-			}
-		}
-
-		matchBytes := getCapture(src, match[0], match[1])
-		newRepl := replFunc(repl, matchBytes, capturedBytes)
-		prevEnd := 0
-		if i > 0 {
-			prevMatch := matches[i-1][:2]
-			prevEnd = prevMatch[1]
-		}
-
-		if match[0] > prevEnd && prevEnd >= 0 && match[0] <= srcLen {
-			dest = append(dest, src[prevEnd:match[0]]...)
-		}
-
-		dest = append(dest, newRepl...)
-	}
-
-	lastEnd := matches[len(matches)-1][1]
-	if lastEnd < srcLen && lastEnd >= 0 {
-		dest = append(dest, src[lastEnd:]...)
-	}
-
-	return dest
+// SubexpNames returns the names of the parenthesized subexpressions
+// in this Regexp. The name for the first sub-expression is names[1],
+// so that if m is a match slice, the name for m[i] is SubexpNames()[i].
+// Since the Regexp as a whole cannot be named, names[0] is always
+// the empty string. The slice should not be modified.
+func (re *Regexp) SubexpNames() []string {
+	return re.subexpNames
 }
 
 func (re *Regexp) String() string {
@@ -391,9 +301,5 @@ func (re *Regexp) Copy() *Regexp {
 // with any other methods.
 func (re *Regexp) Longest() {
 	re.option = re.option | ONIG_OPTION_FIND_LONGEST
-	initRegexp(re)
-}
-
-func (re *Regexp) SubexpNames() []string {
-	return nil
+	re.initRegexp()
 }

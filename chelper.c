@@ -161,12 +161,17 @@ int name_callback(const UChar* name, const UChar* name_end,
         }
         memcpy(&groupInfo->nameBuffer[offset], name, nameLen);
     }
+    
     groupInfo->bufferOffset = newOffset;
-    if (ngroup_num > 0) {
-        groupInfo->numbers[groupInfo->numIndex] = group_nums[ngroup_num-1];
-    } else {
-        groupInfo->numbers[groupInfo->numIndex] = -1;
+
+    if (groupInfo->numbers) {
+        if (ngroup_num > 0) {
+            groupInfo->numbers[groupInfo->numIndex] = group_nums[ngroup_num-1];
+        } else {
+            groupInfo->numbers[groupInfo->numIndex] = -1;
+        }
     }
+
     groupInfo->numIndex += 1;
     return 0;  /* 0: continue */
 }
