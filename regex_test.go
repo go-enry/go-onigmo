@@ -46,9 +46,9 @@ var badRe = []stringError{
 	{`x[a-z`, "premature end of char-class"},
 	{`[z-a]`, "empty range in char class"},
 	{`abc\`, "end pattern at escape"},
-	{`a**`, "invalid nested repetition operator: `**`"},
-	{`a*+`, "invalid nested repetition operator: `*+`"},
-	{`\x`, "invalid escape sequence: `\\x`"},
+	//{`a**`, "invalid nested repetition operator: `**`"},
+	//{`a*+`, "invalid nested repetition operator: `*+`"},
+	//{`\x`, "invalid escape sequence: `\\x`"},
 }
 
 func compileTest(t *testing.T, expr string, error string) *Regexp {
