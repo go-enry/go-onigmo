@@ -29,8 +29,9 @@ var _ compliance = &Regexp{}
 // safe for concurrent use by multiple goroutines.
 type Regexp struct {
 	pattern  string
-	option   int
-	encoding C.OnigEncoding
+	options  Option
+	encoding Encoding
+	syntax   Syntax
 
 	regex     C.OnigRegex
 	errorInfo *C.OnigErrorInfo
@@ -43,20 +44,12 @@ type Regexp struct {
 }
 
 // NewRegexp creates and initializes a new Regexp with the given pattern and option.
-func NewRegexp(pattern string, options int) (*Regexp, error) {
-	return newRegExp(pattern, C.ONIG_ENCODING_UTF8, options)
-}
-
-// NewRegexpASCII is equivalent to NewRegexp, but with the encoding restricted to ASCII.
-func NewRegexpASCII(pattern string, options int) (*Regexp, error) {
-	return newRegExp(pattern, C.ONIG_ENCODING_ASCII, options)
-}
-
-func newRegExp(pattern string, encoding C.OnigEncoding, options int) (*Regexp, error) {
+func NewRegexp(pattern string, encoding Encoding, options Option, syntax Syntax) (*Regexp, error) {
 	re := &Regexp{
 		pattern:  pattern,
 		encoding: encoding,
-		option:   options,
+		options:  options,
+		syntax:   syntax,
 	}
 
 	runtime.SetFinalizer(re, (*Regexp).Free)
@@ -70,8 +63,8 @@ func (re *Regexp) initRegexp() error {
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	errorCode := C.NewOnigRegex(patternCharPtr, C.int(len(re.pattern)), C.int(re.option), &re.regex, &re.encoding, &re.errorInfo, &re.errorBuf)
-	if errorCode != C.ONIG_NORMAL {
+	errorCode := C.NewOnigRegex(patternCharPtr, C.int(len(re.pattern)), C.int(re.options), &re.regex, &re.encoding, re.syntax, &re.errorInfo, &re.errorBuf)
+	if errorCode != 0 {
 		return errors.New(C.GoString(re.errorBuf))
 	}
 
@@ -115,16 +108,17 @@ func (re *Regexp) loadSubexpNames() error {
 }
 
 // Compile parses a regular expression and returns, if successful, a Regexp
-// object that can be used to match against text.
+// object that can be used to match against text. The encoding is set to UTF8
+// and the systax is set to Perl 5.10+ which is the most compatible with Go.
 func Compile(str string) (*Regexp, error) {
-	return NewRegexp(str, ONIG_OPTION_DEFAULT)
+	return NewRegexp(str, EncodingUTF8, OptionNone, SyntaxPerl)
 }
 
 // MustCompile is like Compile but panics if the expression cannot be parsed.
 // It simplifies safe initialization of global variables holding compiled
 // regular expressions.
 func MustCompile(str string) *Regexp {
-	regexp, error := NewRegexp(str, ONIG_OPTION_DEFAULT)
+	regexp, error := Compile(str)
 	if error != nil {
 		panic("regexp: compiling " + str + ": " + error.Error())
 	}
@@ -132,29 +126,8 @@ func MustCompile(str string) *Regexp {
 	return regexp
 }
 
-func CompileWithOption(str string, option int) (*Regexp, error) {
-	return NewRegexp(str, option)
-}
-
-func MustCompileWithOption(str string, option int) *Regexp {
-	regexp, error := NewRegexp(str, option)
-	if error != nil {
-		panic("regexp: compiling " + str + ": " + error.Error())
-	}
-
-	return regexp
-}
-
-// MustCompileASCII is equivalent to MustCompile, but with the encoding restricted to ASCII.
-func MustCompileASCII(str string) *Regexp {
-	regexp, error := NewRegexpASCII(str, ONIG_OPTION_DEFAULT)
-	if error != nil {
-		panic("regexp: compiling " + str + ": " + error.Error())
-	}
-
-	return regexp
-}
-
+// Free release all the cgo resource used by the regexp. This function it's
+// used as finalizer the Regexp.
 func (re *Regexp) Free() {
 	mutex.Lock()
 	if re.regex != nil {
@@ -194,7 +167,7 @@ func (re *Regexp) find(b []byte, n int, offset int) []int {
 	numCapturesPtr := unsafe.Pointer(&numCaptures)
 
 	pos := int(C.SearchOnigRegex(
-		bytesPtr, C.int(n), C.int(offset), C.int(ONIG_OPTION_DEFAULT),
+		bytesPtr, C.int(n), C.int(offset), C.int(OptionNone),
 		re.regex, re.errorInfo, (*C.char)(nil), (*C.int)(capturesPtr), (*C.int)(numCapturesPtr),
 	))
 
@@ -228,7 +201,7 @@ func (re *Regexp) match(b []byte, n int, offset int) bool {
 
 	bytesPtr := unsafe.Pointer(&b[0])
 	pos := int(C.SearchOnigRegex(
-		bytesPtr, C.int(n), C.int(offset), C.int(ONIG_OPTION_DEFAULT),
+		bytesPtr, C.int(n), C.int(offset), C.int(OptionNone),
 		re.regex, re.errorInfo, nil, nil, nil,
 	))
 
@@ -297,7 +270,7 @@ func (re *Regexp) LiteralPrefix() (prefix string, complete bool) {
 
 // Copy returns a new Regexp object copied from re.
 func (re *Regexp) Copy() *Regexp {
-	copy, _ := newRegExp(re.pattern, re.encoding, re.option)
+	copy, _ := NewRegexp(re.pattern, re.encoding, re.options, re.syntax)
 	return copy
 }
 
@@ -308,6 +281,6 @@ func (re *Regexp) Copy() *Regexp {
 // This method modifies the Regexp and may not be called concurrently
 // with any other methods.
 func (re *Regexp) Longest() {
-	re.option = re.option | ONIG_OPTION_FIND_LONGEST
+	re.options = re.options | OptionFindLongest
 	re.initRegexp()
 }

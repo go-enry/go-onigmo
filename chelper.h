@@ -7,7 +7,7 @@
 #include <onigmo.h>
 
 extern int NewOnigRegex( char *pattern, int pattern_length, int option,
-                                  OnigRegex *regex, OnigEncoding *encoding, OnigErrorInfo **error_info, char **error_buffer);
+                                  OnigRegex *regex, OnigEncoding *encoding, const OnigSyntaxType* syntax, OnigErrorInfo **error_info, char **error_buffer);
 
 extern int SearchOnigRegex( void *str, int str_length, int offset, int option,
                                   OnigRegex regex, OnigErrorInfo *error_info, char *error_buffer, int *captures, int *numCaptures);

@@ -104,18 +104,6 @@ func TestCompile_Parallel(t *testing.T) {
 	runParallel(testFunc, numConcurrentRuns)
 }
 
-func TestCompile_WithOption(t *testing.T) {
-	re := MustCompileWithOption("a$", ONIG_OPTION_IGNORECASE)
-	if !re.MatchString("A") {
-		t.Errorf("expect to match\n")
-	}
-	re = MustCompile("a$")
-	if re.MatchString("A") {
-		t.Errorf("expect to mismatch\n")
-	}
-
-}
-
 type numSubexpCase struct {
 	input    string
 	expected int

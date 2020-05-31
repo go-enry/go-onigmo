@@ -1,7 +1,7 @@
 #include "chelper.h"
 
 int NewOnigRegex( char *pattern, int pattern_length, int option,
-                  OnigRegex *regex, OnigEncoding *encoding, OnigErrorInfo **error_info, char **error_buffer) {
+                  OnigRegex *regex, OnigEncoding *encoding, const OnigSyntaxType* syntax, OnigErrorInfo **error_info, char **error_buffer) {
     int ret = ONIG_NORMAL;
     int error_msg_len = 0;
 
@@ -12,10 +12,9 @@ int NewOnigRegex( char *pattern, int pattern_length, int option,
     memset(*error_info, 0, sizeof(OnigErrorInfo));
 
     *error_buffer = (char*) malloc(ONIG_MAX_ERROR_MESSAGE_LEN * sizeof(char));
-
     memset(*error_buffer, 0, ONIG_MAX_ERROR_MESSAGE_LEN * sizeof(char));
 
-    ret = onig_new(regex, pattern_start, pattern_end, (OnigOptionType)(option), *encoding, ONIG_SYNTAX_PERL, *error_info);
+    ret = onig_new(regex, pattern_start, pattern_end, (OnigOptionType)(option), *encoding, syntax, *error_info);
 
     if (ret != ONIG_NORMAL) {
         error_msg_len = onig_error_code_to_str((unsigned char*)(*error_buffer), ret, *error_info);
