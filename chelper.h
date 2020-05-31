@@ -1,4 +1,11 @@
-#include <oniguruma.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <onigmo.h>
+#ifdef BENCHMARK_CHELP
+#include <sys/time.h>
+#endif
+#include <onigmo.h>
 
 extern int NewOnigRegex( char *pattern, int pattern_length, int option,
                                   OnigRegex *regex, OnigEncoding *encoding, OnigErrorInfo **error_info, char **error_buffer);

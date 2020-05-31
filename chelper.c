@@ -1,9 +1,3 @@
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#ifdef BENCHMARK_CHELP
-#include <sys/time.h>
-#endif
 #include "chelper.h"
 
 int NewOnigRegex( char *pattern, int pattern_length, int option,
@@ -17,13 +11,11 @@ int NewOnigRegex( char *pattern, int pattern_length, int option,
     *error_info = (OnigErrorInfo *) malloc(sizeof(OnigErrorInfo));
     memset(*error_info, 0, sizeof(OnigErrorInfo));
 
-    onig_initialize_encoding(*encoding);
-
     *error_buffer = (char*) malloc(ONIG_MAX_ERROR_MESSAGE_LEN * sizeof(char));
 
     memset(*error_buffer, 0, ONIG_MAX_ERROR_MESSAGE_LEN * sizeof(char));
 
-    ret = onig_new(regex, pattern_start, pattern_end, (OnigOptionType)(option), *encoding, OnigDefaultSyntax, *error_info);
+    ret = onig_new(regex, pattern_start, pattern_end, (OnigOptionType)(option), *encoding, ONIG_SYNTAX_PERL, *error_info);
 
     if (ret != ONIG_NORMAL) {
         error_msg_len = onig_error_code_to_str((unsigned char*)(*error_buffer), ret, *error_info);
