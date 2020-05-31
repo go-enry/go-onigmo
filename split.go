@@ -1,7 +1,7 @@
 // Copyright 2010 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
-package rubex
+package onigmo
 
 // Split slices s into substrings separated by the expression and returns a slice of
 // the substrings between those expression matches.

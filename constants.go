@@ -1,4 +1,4 @@
-package rubex
+package onigmo
 
 const (
 	ONIG_OPTION_DEFAULT = ONIG_OPTION_NONE

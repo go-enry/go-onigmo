@@ -1,4 +1,4 @@
-package rubex
+package onigmo
 
 // ReplaceAll returns a copy of src, replacing matches of the Regexp with the
 // replacement text repl. Inside repl, $ signs are interpreted as in Expand, so

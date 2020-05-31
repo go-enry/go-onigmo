@@ -1,4 +1,4 @@
-package rubex
+package onigmo
 
 import (
 	"reflect"

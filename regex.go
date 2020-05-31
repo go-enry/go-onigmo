@@ -1,4 +1,4 @@
-package rubex
+package onigmo
 
 /*
 #cgo CFLAGS: -I/usr/local/include
