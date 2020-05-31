@@ -69,7 +69,7 @@ func (re *Regexp) expand(dst []byte, template string, bsrc []byte, src string, m
 				}
 			}
 		} else {
-			for i, namei := range re.subexpNames {
+			for namei, i := range re.idxSubexpNames {
 				if name == namei && 2*i+1 < len(match) && match[2*i] >= 0 {
 					if bsrc != nil {
 						dst = append(dst, bsrc[match[2*i]:match[2*i+1]]...)

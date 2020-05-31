@@ -38,6 +38,7 @@ type Regexp struct {
 
 	numSubexp         int
 	subexpNames       []string
+	idxSubexpNames    map[string]int
 	hasMetacharacters bool
 }
 
@@ -88,9 +89,11 @@ func (re *Regexp) loadSubexpNames() error {
 
 	bufferSize := len(re.pattern) * 2
 	nameBuffer := make([]byte, bufferSize)
+	groupNumbers := make([]int32, count)
 	bufferPtr := unsafe.Pointer(&nameBuffer[0])
+	numbersPtr := unsafe.Pointer(&groupNumbers[0])
 
-	length := int(C.GetCaptureNames(re.regex, bufferPtr, (C.int)(bufferSize), nil))
+	length := int(C.GetCaptureNames(re.regex, bufferPtr, (C.int)(bufferSize), (*C.int)(numbersPtr)))
 	if length == 0 {
 		return fmt.Errorf("could not get the capture group names")
 	}
@@ -101,6 +104,11 @@ func (re *Regexp) loadSubexpNames() error {
 			"unexpected number of capture group names, got %d, expected %d,",
 			len(re.subexpNames), count,
 		)
+	}
+
+	re.idxSubexpNames = make(map[string]int, len(groupNumbers))
+	for i, idx := range groupNumbers {
+		re.idxSubexpNames[re.subexpNames[i]] = int(idx)
 	}
 
 	return nil

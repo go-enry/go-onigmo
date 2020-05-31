@@ -143,6 +143,7 @@ int name_callback(const UChar* name, const UChar* name_end,
 {
     int nameLen, offset, newOffset;
     group_info_t *groupInfo;
+    
 
     groupInfo = (group_info_t*) arg;
     offset = groupInfo->bufferOffset;
