@@ -1,6 +1,6 @@
 // +build oniguruma
 
-package regex
+package regexp
 
 import (
 	rubex "github.com/go-enry/go-oniguruma"

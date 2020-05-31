@@ -1,6 +1,6 @@
-// +build !oniguruma
+// +build !oniguruma,!onigmo
 
-package regex
+package regexp
 
 import (
 	"regexp"

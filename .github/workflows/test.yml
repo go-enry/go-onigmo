@@ -7,15 +7,8 @@ jobs:
         go-version: [1.13.x, 1.14.x]
     runs-on: ubuntu-latest
     env:
-      ONIGURUMA_VERSION: 6.9.4
+      ONIGMO_VERSION: 6.2.0
     steps:
-    - name: Install libonig5
-      run: |
-        wget "http://archive.ubuntu.com/ubuntu/pool/universe/libo/libonig/libonig5_${ONIGURUMA_VERSION}-1_amd64.deb"
-        sudo dpkg -i "libonig5_${ONIGURUMA_VERSION}-1_amd64.deb"
-        wget "http://archive.ubuntu.com/ubuntu/pool/universe/libo/libonig/libonig-dev_${ONIGURUMA_VERSION}-1_amd64.deb"
-        sudo dpkg -i "libonig-dev_${ONIGURUMA_VERSION}-1_amd64.deb"
-  
     - name: Install Go
       uses: actions/setup-go@v1
       with:
@@ -23,6 +16,9 @@ jobs:
 
     - name: Checkout code
       uses: actions/checkout@v2
+  
+    - name: Install onigmo
+      run: make install-onigmo
 
     - name: Test
-      run: go test -v ./...
+      run: go test ./...

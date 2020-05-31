@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <onigmo.h>
 #ifdef BENCHMARK_CHELP
 #include <sys/time.h>
 #endif
