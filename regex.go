@@ -19,7 +19,6 @@ import (
 )
 
 const numMatchStartSize = 4
-const numReadBufferStartSize = 256
 
 var mutex sync.Mutex
 
@@ -184,14 +183,6 @@ func (re *Regexp) find(b []byte, n int, offset int) []int {
 	}
 
 	return match
-}
-
-func getCapture(b []byte, beg int, end int) []byte {
-	if beg < 0 || end < 0 {
-		return nil
-	}
-
-	return b[beg:end:end]
 }
 
 func (re *Regexp) match(b []byte, n int, offset int) bool {

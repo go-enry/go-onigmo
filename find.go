@@ -24,7 +24,7 @@ func (re *Regexp) Find(b []byte) []byte {
 		return nil
 	}
 
-	return getCapture(b, loc[0], loc[1])
+	return b[loc[0]:loc[1]:loc[1]]
 }
 
 // FindString returns a string holding the text of the leftmost match in s of
@@ -139,22 +139,19 @@ func (re *Regexp) FindSubmatchIndex(b []byte) []int {
 // as defined by the 'Submatch' descriptions in the package comment. A return
 // value of nil indicates no match.
 func (re *Regexp) FindSubmatch(b []byte) [][]byte {
-	match := re.FindSubmatchIndex(b)
-	if match == nil {
+	a := re.FindSubmatchIndex(b)
+	if a == nil {
 		return nil
 	}
 
-	length := len(match) / 2
-	if length == 0 {
-		return nil
+	ret := make([][]byte, 1+re.numSubexp)
+	for i := range ret {
+		if 2*i < len(a) && a[2*i] >= 0 {
+			ret[i] = b[a[2*i]:a[2*i+1]:a[2*i+1]]
+		}
 	}
 
-	results := make([][]byte, 0, length)
-	for i := 0; i < length; i++ {
-		results = append(results, getCapture(b, match[2*i], match[2*i+1]))
-	}
-
-	return results
+	return ret
 }
 
 // FindStringSubmatch returns a slice of strings holding the text of the
@@ -163,24 +160,14 @@ func (re *Regexp) FindSubmatch(b []byte) [][]byte {
 // comment. A return value of nil indicates no match.
 func (re *Regexp) FindStringSubmatch(s string) []string {
 	b := []byte(s)
-	match := re.FindSubmatchIndex(b)
+	match := re.FindSubmatch(b)
 	if match == nil {
 		return nil
 	}
 
-	length := len(match) / 2
-	if length == 0 {
-		return nil
-	}
-
-	results := make([]string, 0, length)
-	for i := 0; i < length; i++ {
-		cap := getCapture(b, match[2*i], match[2*i+1])
-		if cap == nil {
-			results = append(results, "")
-		} else {
-			results = append(results, string(cap))
-		}
+	results := make([]string, 0, len(match))
+	for _, match := range match {
+		results = append(results, string(match))
 	}
 
 	return results
