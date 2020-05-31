@@ -6,6 +6,8 @@ package rubex
 
 import "unicode/utf8"
 
+// Code copied from https://github.com/golang/go/blob/go1.14/src/regexp/regexp.go#L685-L727
+
 // Bitmap used by func special to check whether a character needs to be escaped.
 var specialBytes [16]byte
 
@@ -49,3 +51,5 @@ func QuoteMeta(s string) string {
 	}
 	return string(b[:j])
 }
+
+// End copied code

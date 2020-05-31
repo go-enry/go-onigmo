@@ -1,11 +1,26 @@
 package regex
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf8"
 )
+
+// Code copied from https://github.com/golang/go/blob/go1.14/src/regexp/all_test.go#L569-L880
+
+// Bitmap used by func special to check whether a character needs to be escaped.
+var specialBytes [16]byte
+
+// special reports whether byte b needs to be escaped by QuoteMeta.
+func special(b byte) bool {
+	return b < utf8.RuneSelf && specialBytes[b%16]&(1<<(b/16)) != 0
+}
+
+func init() {
+	for _, b := range []byte(`\.+*?()|[]{}^$`) {
+		specialBytes[b%16] |= 1 << (b / 16)
+	}
+}
 
 func BenchmarkFind(b *testing.B) {
 	b.StopTimer()
@@ -292,20 +307,6 @@ func BenchmarkQuoteMetaAll(b *testing.B) {
 	}
 }
 
-// Bitmap used by func special to check whether a character needs to be escaped.
-var specialBytes [16]byte
-
-// special reports whether byte b needs to be escaped by QuoteMeta.
-func special(b byte) bool {
-	return b < utf8.RuneSelf && specialBytes[b%16]&(1<<(b/16)) != 0
-}
-
-func init() {
-	for _, b := range []byte(`\.+*?()|[]{}^$`) {
-		specialBytes[b%16] |= 1 << (b / 16)
-	}
-}
-
 func BenchmarkQuoteMetaNone(b *testing.B) {
 	s := "abcdefghijklmnopqrstuvwxyz"
 	b.SetBytes(int64(len(s)))
@@ -334,25 +335,4 @@ func BenchmarkCompile(b *testing.B) {
 	}
 }
 
-func TestDeepEqual(t *testing.T) {
-	re1 := MustCompile("a.*b.*c.*d")
-	re2 := MustCompile("a.*b.*c.*d")
-	if !reflect.DeepEqual(re1, re2) { // has always been true, since Go 1.
-		t.Errorf("DeepEqual(re1, re2) = false, want true")
-	}
-
-	re1.MatchString("abcdefghijklmn")
-	if !reflect.DeepEqual(re1, re2) {
-		t.Errorf("DeepEqual(re1, re2) = false, want true")
-	}
-
-	re2.MatchString("abcdefghijklmn")
-	if !reflect.DeepEqual(re1, re2) {
-		t.Errorf("DeepEqual(re1, re2) = false, want true")
-	}
-
-	re2.MatchString(strings.Repeat("abcdefghijklmn", 100))
-	if !reflect.DeepEqual(re1, re2) {
-		t.Errorf("DeepEqual(re1, re2) = false, want true")
-	}
-}
+// End copied code

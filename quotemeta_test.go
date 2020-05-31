@@ -1,7 +1,11 @@
+// Copyright 2013 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
 package rubex
 
 import "testing"
 
+// Code copied from https://github.com/golang/go/blob/go1.14/src/regexp/all_test.go#L355-L405
 type MetaTest struct {
 	pattern, output, literal string
 	isLiteral                bool
@@ -14,19 +18,6 @@ var metaTests = []MetaTest{
 	{`foo\.\$`, `foo\\\.\\\$`, `foo.$`, true}, // has meta but no operator
 	{`foo.\$`, `foo\.\\\$`, `foo`, false},     // has escaped operators and real operators
 	{`!@#$%^&*()_+-=[{]}\|,<.>/?~`, `!@#\$%\^&\*\(\)_\+-=\[\{\]\}\\\|,<\.>/\?~`, `!@#`, false},
-}
-
-var literalPrefixTests = []MetaTest{
-	// See golang.org/issue/11175.
-	// output is unused.
-	{`^0^0$`, ``, `0`, false},
-	{`^0^`, ``, ``, false},
-	{`^0$`, ``, `0`, true},
-	{`$0^`, ``, ``, false},
-	{`$0$`, ``, ``, false},
-	{`^^0$$`, ``, ``, false},
-	{`^$^$`, ``, ``, false},
-	{`$$0^^`, ``, ``, false},
 }
 
 func TestQuoteMeta(t *testing.T) {
@@ -58,3 +49,5 @@ func TestQuoteMeta(t *testing.T) {
 		}
 	}
 }
+
+// End copied code

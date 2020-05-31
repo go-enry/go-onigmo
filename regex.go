@@ -2,9 +2,8 @@ package rubex
 
 /*
 #cgo CFLAGS: -I/usr/local/include
-#cgo LDFLAGS: -L/usr/local/lib -lonig
+#cgo LDFLAGS: -L/usr/local/lib -lonigmo
 #include <stdlib.h>
-#include <oniguruma.h>
 #include "chelper.h"
 */
 import "C"
@@ -13,7 +12,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"runtime"
 	"strconv"
 	"sync"
@@ -41,40 +39,49 @@ type Regexp struct {
 	errorInfo *C.OnigErrorInfo
 	errorBuf  *C.char
 
-	numCaptures    int32
-	namedGroupInfo NamedGroupInfo
+	numCaptures       int32
+	namedGroupInfo    NamedGroupInfo
+	hasMetacharacters bool
 }
 
 // NewRegexp creates and initializes a new Regexp with the given pattern and option.
-func NewRegexp(pattern string, option int) (*Regexp, error) {
-	return initRegexp(&Regexp{pattern: pattern, encoding: C.ONIG_ENCODING_UTF8}, option)
+func NewRegexp(pattern string, options int) (*Regexp, error) {
+	return newRegExp(pattern, C.ONIG_ENCODING_UTF8, options)
 }
 
 // NewRegexpASCII is equivalent to NewRegexp, but with the encoding restricted to ASCII.
-func NewRegexpASCII(pattern string, option int) (*Regexp, error) {
-	return initRegexp(&Regexp{pattern: pattern, encoding: C.ONIG_ENCODING_ASCII}, option)
+func NewRegexpASCII(pattern string, options int) (*Regexp, error) {
+	return newRegExp(pattern, C.ONIG_ENCODING_ASCII, options)
 }
 
-func initRegexp(re *Regexp, option int) (*Regexp, error) {
-	re.option = option
+func newRegExp(pattern string, encoding C.OnigEncoding, options int) (*Regexp, error) {
+	re := &Regexp{
+		pattern:  pattern,
+		encoding: encoding,
+		option:   options,
+	}
 
+	runtime.SetFinalizer(re, (*Regexp).Free)
+	return re, initRegexp(re)
+}
+
+func initRegexp(re *Regexp) error {
 	patternCharPtr := C.CString(re.pattern)
 	defer C.free(unsafe.Pointer(patternCharPtr))
 
 	mutex.Lock()
 	defer mutex.Unlock()
 
-	errorCode := C.NewOnigRegex(patternCharPtr, C.int(len(re.pattern)), C.int(option), &re.regex, &re.encoding, &re.errorInfo, &re.errorBuf)
+	errorCode := C.NewOnigRegex(patternCharPtr, C.int(len(re.pattern)), C.int(re.option), &re.regex, &re.encoding, &re.errorInfo, &re.errorBuf)
 	if errorCode != C.ONIG_NORMAL {
-		return re, errors.New(C.GoString(re.errorBuf))
+		return errors.New(C.GoString(re.errorBuf))
 	}
 
 	re.numCaptures = int32(C.onig_number_of_captures(re.regex)) + 1
 	re.namedGroupInfo = re.getNamedGroupInfo()
+	re.hasMetacharacters = QuoteMeta(re.pattern) != re.pattern
 
-	runtime.SetFinalizer(re, (*Regexp).Free)
-
-	return re, nil
+	return nil
 }
 
 // Compile parses a regular expression and returns, if successful, a Regexp
@@ -219,7 +226,7 @@ func getCapture(b []byte, beg int, end int) []byte {
 		return nil
 	}
 
-	return b[beg:end]
+	return b[beg:end:end]
 }
 
 func (re *Regexp) match(b []byte, n int, offset int) bool {
@@ -270,268 +277,6 @@ func (re *Regexp) findAll(b []byte, n int) [][]int {
 	}
 
 	return capture
-}
-
-// FindIndex returns a two-element slice of integers defining the location of
-// the leftmost match in b of the regular expression. The match itself is at
-// b[loc[0]:loc[1]]. A return value of nil indicates no match.
-func (re *Regexp) FindIndex(b []byte) []int {
-	match := re.find(b, len(b), 0)
-	if len(match) == 0 {
-		return nil
-	}
-
-	return match[:2]
-}
-
-// Find returns a slice holding the text of the leftmost match in b of the
-// regular expression. A return value of nil indicates no match.
-func (re *Regexp) Find(b []byte) []byte {
-	loc := re.FindIndex(b)
-	if loc == nil {
-		return nil
-	}
-
-	return getCapture(b, loc[0], loc[1])
-}
-
-// FindString returns a string holding the text of the leftmost match in s of
-// the regular expression. If there is no match, the return value is an empty
-// string, but it will also be empty if the regular expression successfully
-// matches an empty string. Use FindStringIndex or FindStringSubmatch if it is
-// necessary to distinguish these cases.
-func (re *Regexp) FindString(s string) string {
-	mb := re.Find([]byte(s))
-	if mb == nil {
-		return ""
-	}
-
-	return string(mb)
-}
-
-// FindStringIndex returns a two-element slice of integers defining the location
-// of the leftmost match in s of the regular expression. The match itself is at
-// s[loc[0]:loc[1]]. A return value of nil indicates no match.
-func (re *Regexp) FindStringIndex(s string) []int {
-	return re.FindIndex([]byte(s))
-}
-
-// FindAllIndex is the 'All' version of FindIndex; it returns a slice of all
-// successive matches of the expression, as defined by the 'All' description in
-// the package comment. A return value of nil indicates no match.
-func (re *Regexp) FindAllIndex(b []byte, n int) [][]int {
-	matches := re.findAll(b, n)
-	if len(matches) == 0 {
-		return nil
-	}
-
-	return matches
-}
-
-// FindAll is the 'All' version of Find; it returns a slice of all successive
-// matches of the expression, as defined by the 'All' description in the package
-// comment. A return value of nil indicates no match.
-func (re *Regexp) FindAll(b []byte, n int) [][]byte {
-	matches := re.FindAllIndex(b, n)
-	if matches == nil {
-		return nil
-	}
-
-	matchBytes := make([][]byte, 0, len(matches))
-	for _, match := range matches {
-		matchBytes = append(matchBytes, getCapture(b, match[0], match[1]))
-	}
-
-	return matchBytes
-}
-
-// FindAllString is the 'All' version of FindString; it returns a slice of all
-// successive matches of the expression, as defined by the 'All' description in
-// the package comment. A return value of nil indicates no match.
-func (re *Regexp) FindAllString(s string, n int) []string {
-	b := []byte(s)
-	matches := re.FindAllIndex(b, n)
-	if matches == nil {
-		return nil
-	}
-
-	matchStrings := make([]string, 0, len(matches))
-	for _, match := range matches {
-		m := getCapture(b, match[0], match[1])
-		if m == nil {
-			matchStrings = append(matchStrings, "")
-		} else {
-			matchStrings = append(matchStrings, string(m))
-		}
-	}
-
-	return matchStrings
-
-}
-
-// FindAllStringIndex is the 'All' version of FindStringIndex; it returns a
-// slice of all successive matches of the expression, as defined by the 'All'
-// description in the package comment. A return value of nil indicates no match.
-func (re *Regexp) FindAllStringIndex(s string, n int) [][]int {
-	return re.FindAllIndex([]byte(s), n)
-}
-
-// FindSubmatchIndex returns a slice holding the index pairs identifying the
-// leftmost match of the regular expression in b and the matches, if any, of its
-// subexpressions, as defined by the 'Submatch' and 'Index' descriptions in the
-// package comment. A return value of nil indicates no match.
-func (re *Regexp) FindSubmatchIndex(b []byte) []int {
-	match := re.find(b, len(b), 0)
-	if len(match) == 0 {
-		return nil
-	}
-
-	return match
-}
-
-// FindSubmatch returns a slice of slices holding the text of the leftmost match
-// of the regular expression in b and the matches, if any, of its subexpressions,
-// as defined by the 'Submatch' descriptions in the package comment. A return
-// value of nil indicates no match.
-func (re *Regexp) FindSubmatch(b []byte) [][]byte {
-	match := re.FindSubmatchIndex(b)
-	if match == nil {
-		return nil
-	}
-
-	length := len(match) / 2
-	if length == 0 {
-		return nil
-	}
-
-	results := make([][]byte, 0, length)
-	for i := 0; i < length; i++ {
-		results = append(results, getCapture(b, match[2*i], match[2*i+1]))
-	}
-
-	return results
-}
-
-// FindStringSubmatch returns a slice of strings holding the text of the
-// leftmost match of the regular expression in s and the matches, if any, of its
-// subexpressions, as defined by the 'Submatch' description in the package
-// comment. A return value of nil indicates no match.
-func (re *Regexp) FindStringSubmatch(s string) []string {
-	b := []byte(s)
-	match := re.FindSubmatchIndex(b)
-	if match == nil {
-		return nil
-	}
-
-	length := len(match) / 2
-	if length == 0 {
-		return nil
-	}
-
-	results := make([]string, 0, length)
-	for i := 0; i < length; i++ {
-		cap := getCapture(b, match[2*i], match[2*i+1])
-		if cap == nil {
-			results = append(results, "")
-		} else {
-			results = append(results, string(cap))
-		}
-	}
-
-	return results
-}
-
-// FindStringSubmatchIndex returns a slice holding the index pairs identifying
-// the leftmost match of the regular expression in s and the matches, if any, of
-// its subexpressions, as defined by the 'Submatch' and 'Index' descriptions in
-// the package comment. A return value of nil indicates no match.
-func (re *Regexp) FindStringSubmatchIndex(s string) []int {
-	return re.FindSubmatchIndex([]byte(s))
-}
-
-// FindAllSubmatchIndex is the 'All' version of FindSubmatchIndex; it returns a
-// slice of all successive matches of the expression, as defined by the 'All'
-// description in the package comment. A return value of nil indicates no match.
-func (re *Regexp) FindAllSubmatchIndex(b []byte, n int) [][]int {
-	matches := re.findAll(b, n)
-	if len(matches) == 0 {
-		return nil
-	}
-
-	return matches
-}
-
-// FindAllSubmatch is the 'All' version of FindSubmatch; it returns a slice of
-// all successive matches of the expression, as defined by the 'All' description
-// in the package comment. A return value of nil indicates no match.
-func (re *Regexp) FindAllSubmatch(b []byte, n int) [][][]byte {
-	matches := re.findAll(b, n)
-	if len(matches) == 0 {
-		return nil
-	}
-
-	allCapturedBytes := make([][][]byte, 0, len(matches))
-	for _, match := range matches {
-		length := len(match) / 2
-		capturedBytes := make([][]byte, 0, length)
-		for i := 0; i < length; i++ {
-			capturedBytes = append(capturedBytes, getCapture(b, match[2*i], match[2*i+1]))
-		}
-
-		allCapturedBytes = append(allCapturedBytes, capturedBytes)
-	}
-
-	return allCapturedBytes
-}
-
-// FindAllStringSubmatch is the 'All' version of FindStringSubmatch; it returns
-// a slice of all successive matches of the expression, as defined by the 'All'
-// description in the package comment. A return value of nil indicates no match.
-func (re *Regexp) FindAllStringSubmatch(s string, n int) [][]string {
-	b := []byte(s)
-
-	matches := re.findAll(b, n)
-	if len(matches) == 0 {
-		return nil
-	}
-
-	allCapturedStrings := make([][]string, 0, len(matches))
-	for _, match := range matches {
-		length := len(match) / 2
-		capturedStrings := make([]string, 0, length)
-		for i := 0; i < length; i++ {
-			cap := getCapture(b, match[2*i], match[2*i+1])
-			if cap == nil {
-				capturedStrings = append(capturedStrings, "")
-			} else {
-				capturedStrings = append(capturedStrings, string(cap))
-			}
-		}
-
-		allCapturedStrings = append(allCapturedStrings, capturedStrings)
-	}
-
-	return allCapturedStrings
-}
-
-// FindAllStringSubmatchIndex is the 'All' version of FindStringSubmatchIndex;
-// it returns a slice of all successive matches of the expression, as defined
-// by the 'All' description in the package comment. A return value of nil
-// indicates no match.
-func (re *Regexp) FindAllStringSubmatchIndex(s string, n int) [][]int {
-	return re.FindAllSubmatchIndex([]byte(s), n)
-}
-
-// Match reports whether the byte slice b contains any match of the regular
-// expression re.
-func (re *Regexp) Match(b []byte) bool {
-	return re.match(b, len(b), 0)
-}
-
-// MatchString reports whether the string s contains any match of the regular
-// expression re.
-func (re *Regexp) MatchString(s string) bool {
-	return re.Match([]byte(s))
 }
 
 // NumSubexp returns the number of parenthesized subexpressions in this Regexp.
@@ -622,166 +367,31 @@ func (re *Regexp) replaceAll(src, repl []byte, replFunc func([]byte, []byte, map
 	return dest
 }
 
-// ReplaceAll returns a copy of src, replacing matches of the Regexp with the
-// replacement text repl. Inside repl, $ signs are interpreted as in Expand, so
-// for instance $1 represents the text of the first submatch.
-func (re *Regexp) ReplaceAll(src, repl []byte) []byte {
-	return re.replaceAll(src, repl, fillCapturedValues)
-}
-
-// ReplaceAllFunc returns a copy of src in which all matches of the Regexp have
-// been replaced by the return value of function repl applied to the matched
-// byte slice. The replacement returned by repl is substituted directly, without
-// using Expand.
-func (re *Regexp) ReplaceAllFunc(src []byte, repl func([]byte) []byte) []byte {
-	return re.replaceAll(src, nil, func(_ []byte, matchBytes []byte, _ map[string][]byte) []byte {
-		return repl(matchBytes)
-	})
-}
-
-// ReplaceAllString returns a copy of src, replacing matches of the Regexp with
-// the replacement string repl. Inside repl, $ signs are interpreted as in
-// Expand, so for instance $1 represents the text of the first submatch.
-func (re *Regexp) ReplaceAllString(src, repl string) string {
-	return string(re.ReplaceAll([]byte(src), []byte(repl)))
-}
-
-// ReplaceAllStringFunc returns a copy of src in which all matches of the Regexp
-// have been replaced by the return value of function repl applied to the
-// matched substring. The replacement returned by repl is substituted directly,
-// without using Expand.
-func (re *Regexp) ReplaceAllStringFunc(src string, repl func(string) string) string {
-	return string(re.replaceAll([]byte(src), nil, func(_ []byte, matchBytes []byte, _ map[string][]byte) []byte {
-		return []byte(repl(string(matchBytes)))
-	}))
-}
-
 func (re *Regexp) String() string {
 	return re.pattern
 }
 
-// FindReaderIndex returns a two-element slice of integers defining the location
-// of the leftmost match of the regular expression in text read from the
-// RuneReader. The match text was found in the input stream at byte offset
-// loc[0] through loc[1]-1. A return value of nil indicates no match.
-//
-// In contrast with the standard library implementation, the reader it's fully
-// loaded in memory.
-func (re *Regexp) FindReaderIndex(r io.RuneReader) []int {
-	b, _ := readAll(r)
-	return re.FindIndex(b)
-}
-
-// FindReaderSubmatchIndex returns a slice holding the index pairs identifying
-// the leftmost match of the regular expression of text read by the RuneReader,
-// and the matches, if any, of its subexpressions, as defined by the 'Submatch'
-// and 'Index' descriptions in the package comment. A return value of nil
-// indicates no match.
-//
-// In contract with the standard library implementation, the reader it's fully
-// loaded in memory.
-func (re *Regexp) FindReaderSubmatchIndex(r io.RuneReader) []int {
-	b, _ := readAll(r)
-	return re.FindSubmatchIndex(b)
-}
-
-// MatchReader reports whether the text returned by the RuneReader contains any
-// match of the regular expression re.
-//
-// In contrast with the standard library implementation, the reader it's fully
-// loaded in memory.
-func (re *Regexp) MatchReader(r io.RuneReader) bool {
-	b, _ := readAll(r)
-	return re.Match(b)
-}
-
-func readAll(r io.RuneReader) ([]byte, error) {
-	var buf bytes.Buffer
-	for {
-		rune, _, err := r.ReadRune()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			return nil, err
-		}
-
-		if _, err := buf.WriteRune(rune); err != nil {
-			return nil, err
-		}
-	}
-
-	return buf.Bytes(), nil
-}
-
-// LiteralPrefix returns a literal string that must begin any match of the
-// regular expression re. It returns the boolean true if the literal string
-// comprises the entire regular expression.
+// LiteralPrefix it's not implemented. Panics when it called.
 func (re *Regexp) LiteralPrefix() (prefix string, complete bool) {
-	//no easy way to implement this
+	panic("function not implemented")
 	return "", false
-}
-
-// MatchString reports whether the string s contains any match of the regular expression re.
-func MatchString(pattern string, s string) (matched bool, error error) {
-	re, err := Compile(pattern)
-	if err != nil {
-		return false, err
-	}
-
-	return re.MatchString(s), nil
-}
-
-func (re *Regexp) Gsub(src, repl string) string {
-	return string(re.replaceAll([]byte(src), []byte(repl), fillCapturedValues))
-}
-
-func (re *Regexp) GsubFunc(src string, replFunc func(string, map[string]string) string) string {
-	replaced := re.replaceAll([]byte(src), nil,
-		func(_ []byte, matchBytes []byte, capturedBytes map[string][]byte) []byte {
-			capturedStrings := make(map[string]string)
-			for name, capBytes := range capturedBytes {
-				capturedStrings[name] = string(capBytes)
-			}
-			matchString := string(matchBytes)
-			return ([]byte)(replFunc(matchString, capturedStrings))
-		},
-	)
-
-	return string(replaced)
 }
 
 // Copy returns a new Regexp object copied from re.
 func (re *Regexp) Copy() *Regexp {
-	copy := &Regexp{pattern: re.pattern, encoding: re.encoding}
-	_, _ = initRegexp(copy, re.option)
-
+	copy, _ := newRegExp(re.pattern, re.encoding, re.option)
 	return copy
 }
 
-func (re *Regexp) Expand(dst []byte, template []byte, src []byte, match []int) []byte {
-	return nil
-}
-
-func (re *Regexp) ExpandString(dst []byte, template string, src string, match []int) []byte {
-	return nil
-}
-
+// Longest makes future searches prefer the leftmost-longest match.
+// That is, when matching against text, the regexp returns a match that
+// begins as early as possible in the input (leftmost), and among those
+// it chooses a match that is as long as possible.
+// This method modifies the Regexp and may not be called concurrently
+// with any other methods.
 func (re *Regexp) Longest() {
-
-}
-
-func (re *Regexp) ReplaceAllLiteral(src, repl []byte) []byte {
-	return nil
-}
-
-func (re *Regexp) ReplaceAllLiteralString(src, repl string) string {
-	return ""
-}
-
-func (re *Regexp) Split(s string, n int) []string {
-	return nil
+	re.option = re.option | ONIG_OPTION_FIND_LONGEST
+	initRegexp(re)
 }
 
 func (re *Regexp) SubexpNames() []string {
